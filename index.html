@@ -563,7 +563,8 @@ const BAIRROS={'Belo Horizonte':['Savassi','Prado','Barreiro','Pampulha','Venda 
 const STAGES=[['novo','Novo'],['pesquisa','Em pesquisa'],['validado','Contato validado'],['realizado','Contato realizado'],['qualificado','Qualificado'],['proposta','Proposta enviada'],['negociacao','Negociação'],['ganho','Ganho'],['perdido','Perdido'],['nutricao','Sem interesse agora']];
 const SI=Object.fromEntries(STAGES.map(([k],i)=>[k,i]));
 const SL=Object.fromEntries(STAGES);
-const LOSS=['Sem orçamento','Benefício existente suficiente','Sem interesse','Sem equipe compatível','Sem acesso ao decisor','Contato inválido','Negociação adiada','Concorrente','Outro'];
+const LOSS=['Sem orçamento','Benefício existente suficiente','Sem interesse','Sem equipe compatível','Sem acesso ao decisor','Contato inválido','Negociação adiada','Concorrente','Confundiu com plano de saúde','Convenção coletiva exige plano','Outro'];
+const PARTNERS=[{nome:'Contabilidade Exemplo Savassi',tipo:'Escritório contábil',status:'Em conversa',empresas:18,encaminhadas:4,resp:'ana',origem:'Indicação'}];
 const NEXT_TXT={novo:'Pesquisar site e contato comercial',pesquisa:'Validar telefone comercial',validado:'Ligar e pedir o responsável',realizado:'Falar com o decisor',qualificado:'Preparar proposta',proposta:'Cobrar retorno da proposta',negociacao:'Ajustar condições com o dono',nutricao:'Retomar contato no próximo trimestre'};
 
 /* ================= synthetic data ================= */
@@ -611,10 +612,11 @@ plan.forEach(([seg,n])=>{for(let i=0;i<n;i++){
   const reached=maxStage;
   const contatos=[{id:id+'t1',tipo:'Telefone',valor:fone(),origem:'Receita Federal (cadastral)',status:reached>=2?'validado':'cadastral',quando:addDays(TODAY,-between(1,40))}];
   if(R()<.55)contatos.push({id:id+'e1',tipo:'E-mail',valor:`contato@${nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'')}.exemplo`,origem:R()<.5?'Site oficial':'Receita Federal (cadastral)',status:reached>=3&&R()<.6?'validado':'cadastral',quando:addDays(TODAY,-between(1,60))});
-  const q={func:null,funcStatus:'desconhecido',terceiros:null,decisor:null,decisorNome:null,beneficio:null,interesse:null,orcamento:null,prazo:null,adesaoInd:null};
+  const q={func:null,funcStatus:'desconhecido',terceiros:null,decisor:null,decisorNome:null,beneficio:null,interesse:null,orcamento:null,prazo:null,adesaoInd:null,rotatividade:null,cobre:null,cct:null,contador:null,turnos:null};
   if(reached>=3){q.decisor=R()<.7?true:null;if(R()<.6){q.func=between(6,60);q.funcStatus=R()<.75?'confirmado':'estimado';q.terceiros=R()<.5?false:null}if(R()<.5)q.beneficio=pick(['nenhum','nenhum','telemedicina','plano'])}
   if(reached>=4){q.func=between(11,46);q.funcStatus='confirmado';q.decisor=true;q.decisorNome=pick(['Sr. Marcos (sócio)','Dona Célia (proprietária)','Rafael (administrativo)','Juliana (RH)','Sr. Antônio (dono)','Patrícia (gerente)']);q.interesse='sim';q.beneficio=q.beneficio||pick(['nenhum','nenhum','plano']);q.orcamento=pick(['definido','a definir']);q.prazo=pick(['30 dias','60 dias','90 dias']);q.terceiros=pick([true,false])}
   if(stage==='nutricao'){q.interesse='nao'}
+  if(reached>=3){if(R()<.65)q.rotatividade=pick(['alta','alta','normal']);if(R()<.5)q.turnos=pick([true,false]);if(R()<.55)q.cct=seg==='limp'?pick([true,false,false]):false;if(q.beneficio)q.cobre=q.beneficio==='nenhum'?'ninguem':pick(['parte','parte','todos']);if(R()<.3)q.contador=pick(['Contabilidade Exemplo Savassi','Escritório Fiscal Modelo','Contábil Demonstração Eldorado'])}
   const resp=si>=1||SEGS[seg].piloto&&R()<.6?respCycle[COMPANIES.length%3]:null;
   const c={id,nome,razao:`${nome.toUpperCase().normalize('NFC')} ${pick(['LTDA','LTDA','ME','EIRELI'])}`.replace(' EIRELI',' LTDA'),cnpjRoot:root,cnpj,seg,cnaePri,cnaeSec,viaSec,cidade,bairro:pick(BAIRROS[cidade]),uf:'MG',situacao,abertura,porte:pick(['ME','ME','EPP','Demais']),mei:false,simples:R()<.7,natureza:'Sociedade Empresária Limitada',capital:between(10,300)*100000,contatos,qual:q,supressao:null,resp,filiais:[],fonteData:addDays(TODAY,-9),acts:[]};
   if(R()<.07){const b2=root+'0002';c.filiais.push({cnpj:b2+cnpjDv(b2),bairro:pick(BAIRROS[cidade]),cidade});}
@@ -673,7 +675,8 @@ function score(c){
   const unknown=comps.filter(x=>x.state==='unknown').length;
   const block=c.supressao?.escopo==='empresa'?'Não contatar':c.situacao!=='ATIVA'?`Situação cadastral: ${c.situacao}`:null;
   const answered=[q.funcStatus==='confirmado',q.decisor!=null,q.beneficio!=null,q.interesse!=null,q.orcamento!=null].filter(Boolean).length;
-  return {total,comps,unknown,block,answered};
+  const ctx=[q.rotatividade!=null,q.cobre!=null,q.cct!=null,q.contador!=null,q.turnos!=null].filter(Boolean).length;
+  return {total,comps,unknown,block,answered,ctx};
 }
 const oppOf=c=>OPPS.find(o=>o.cid===c.id);
 const coOf=o=>COMPANIES.find(c=>c.id===o.cid);
@@ -940,7 +943,8 @@ function drawDrawer(prevScore){
   $('#dSup')&&($('#dSup').onclick=()=>suppressModal(c));
   $('#mTry').onclick=()=>{activityModal(c.id,'try')};$('#mConv').onclick=()=>activityModal(c.id,'conv');$('#mQual').onclick=()=>{DR.tab='qual';drawDrawer()};
   const b=$('#dBody');
-  const banner=c.supressao?`<div class="block-banner">${ico('lock')}<div><b>Não contatar${c.supressao.escopo==='telefone'?' por telefone':''}</b> desde ${fDate(c.supressao.data)}, por ${TEAM[c.supressao.autor].nome}. Motivo: ${esc(c.supressao.motivo)}. Fica fora de exportações e eventos de contato, mesmo após nova importação.${TEAM.andre.admin?` <button class="btn sec sm" id="reactBtn" style="margin-left:6px">Reativar (admin)</button>`:''}</div></div>`:c.situacao!=='ATIVA'?`<div class="block-banner warn">${ico('alert')}<div><b>Situação cadastral ${c.situacao}.</b> A seleção automática para prospecção está suspensa. O histórico é preservado.</div></div>`:'';
+  let banner=c.supressao?`<div class="block-banner">${ico('lock')}<div><b>Não contatar${c.supressao.escopo==='telefone'?' por telefone':''}</b> desde ${fDate(c.supressao.data)}, por ${TEAM[c.supressao.autor].nome}. Motivo: ${esc(c.supressao.motivo)}. Fica fora de exportações e eventos de contato, mesmo após nova importação.${TEAM.andre.admin?` <button class="btn sec sm" id="reactBtn" style="margin-left:6px">Reativar (admin)</button>`:''}</div></div>`:c.situacao!=='ATIVA'?`<div class="block-banner warn">${ico('alert')}<div><b>Situação cadastral ${c.situacao}.</b> A seleção automática para prospecção está suspensa. O histórico é preservado.</div></div>`:'';
+  if(c.qual.cct===true&&!c.supressao)banner+=`<div class="block-banner warn">${ico('alert')}<div><b>A convenção coletiva exige benefício de saúde.</b> Telemedicina não substitui um plano exigido pela convenção. Use outro argumento (complemento ao plano, dependentes) ou registre a perda "Convenção coletiva exige plano".</div></div>`;
   if(DR.tab==='visao'){
     const C=2*Math.PI*62;
     b.innerHTML=`${banner}<div class="d-grid">
@@ -971,9 +975,9 @@ function drawDrawer(prevScore){
     requestAnimationFrame(()=>requestAnimationFrame(()=>{const fg=$('#ringFg');if(fg)fg.style.strokeDashoffset=C*(1-s.total/100);const n=$('#ringN');if(n){n.dataset.count=s.total;if(prevScore!=null&&!reduced()){const from=prevScore,t0=performance.now();const st=t=>{const p=Math.min(1,(t-t0)/900);n.textContent=Math.round(from+(s.total-from)*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(st)};requestAnimationFrame(st)}else countUp(n)}}));
   }
   if(DR.tab==='qual'){
-    const q=c.qual;const tri=(k,opts)=>`<div class="tri" data-k="${k}">${opts.map(([v,l,cls])=>`<button data-v="${v}" class="${String(q[k])===String(v)?'on '+cls:''}">${l}</button>`).join('')}</div>`;
+    const q=c.qual;const tri=(k,opts)=>`<div class="tri" data-k="${k}">${opts.map(([v,l,cls])=>`<button data-v="${v}" data-c="${cls}" class="${String(q[k])===String(v)?'on '+cls:''}">${l}</button>`).join('')}</div>`;
     const yn=[['true','Sim','yes'],['false','Não','no'],['null','Não sei','unk']];
-    b.innerHTML=`${banner}<div class="card" style="margin-bottom:14px"><div class="card-head" style="margin-bottom:8px"><h3>Qualificação</h3><span class="num"><b id="qAns">${s.answered}</b> de 5 respondidas</span></div><div class="progress"><i id="qBar" style="width:${s.answered/5*100}%"></i></div><p class="hint" style="margin:8px 0 0">"Não sei" fica registrado como desconhecido, diferente de "não". A pontuação atualiza na hora: <b id="qScore">${s.total}</b> pontos.</p></div>
+    b.innerHTML=`${banner}<div class="card" style="margin-bottom:14px"><div class="card-head" style="margin-bottom:8px"><h3>Qualificação</h3><span class="num"><b id="qAns">${s.answered}</b> de 5 · contexto <b id="qCtx">${s.ctx}</b> de 5</span></div><div class="progress"><i id="qBar" style="width:${s.answered/5*100}%"></i></div><p class="hint" style="margin:8px 0 0">"Não sei" fica registrado como desconhecido, diferente de "não". A pontuação atualiza na hora: <b id="qScore">${s.total}</b> pontos.</p></div>
     <div class="card">
       <div class="q"><h4>1. Quantas pessoas trabalham na empresa? <span>Inclui terceiros e temporários?</span></h4><div class="qrow"><input class="in" id="qFunc" type="number" min="1" inputmode="numeric" placeholder="Não informado" value="${q.func??''}" style="width:150px">${tri('funcStatus',[['confirmado','Confirmado','yes'],['estimado','Estimativa','unk'],['desconhecido','Não sei','unk']])}${tri('terceiros',[['true','Inclui terceiros','yes'],['false','Só CLT','no'],['null','Não sei','unk']])}</div></div>
       <div class="q"><h4>2. Já existe benefício de saúde ou telemedicina?</h4>${tri('beneficio',[['nenhum','Nenhum','yes'],['telemedicina','Telemedicina','no'],['plano','Plano de saúde','no'],['null','Não sei','unk']])}<p class="hint" style="margin:6px 0 0">Ter benefício não bloqueia a oportunidade. Ausência de registro não quer dizer ausência de benefício.</p></div>
@@ -981,17 +985,27 @@ function drawDrawer(prevScore){
       <div class="q"><h4>4. Há interesse em custear por colaborador? <span>Qual horizonte de decisão?</span></h4><div class="qrow">${tri('interesse',[['sim','Quer avaliar','yes'],['nao','Sem interesse agora','no'],['null','Não sei','unk']])}${tri('orcamento',[['definido','Orçamento definido','yes'],['a definir','A definir','unk'],['null','Não sei','unk']])}</div></div>
       <div class="q"><h4>5. Se não houver custeio, topa divulgar adesão individual voluntária?</h4>${tri('adesaoInd',yn)}</div>
     </div>
+    <div class="card" style="margin-top:14px">
+      <div class="card-head" style="margin-bottom:4px"><h3>Contexto da empresa</h3><span class="chip">não pontua no piloto</span></div>
+      <p class="hint" style="margin:0 0 6px">Perguntas que vieram do benchmark de clientes. Ficam registradas para calibrar a pontuação depois do piloto.</p>
+      <div class="q"><h4>6. Quanto tempo as pessoas costumam ficar? <span>A rotatividade incomoda?</span></h4>${tri('rotatividade',[['alta','Incomoda','yes'],['normal','Está normal','no'],['null','Não sei','unk']])}</div>
+      <div class="q"><h4>7. O benefício de saúde atual cobre quem?</h4>${tri('cobre',[['ninguem','Ninguém','yes'],['parte','Só parte da equipe','yes'],['todos','Toda a equipe','no'],['null','Não sei','unk']])}</div>
+      <div class="q"><h4>8. A convenção coletiva da categoria exige benefício de saúde?</h4>${tri('cct',[['false','Não exige','yes'],['true','Exige','no'],['null','Não sei','unk']])}</div>
+      <div class="q"><h4>9. Quem cuida da folha? <span>Escritório de contabilidade pode virar parceiro</span></h4><input class="in" id="qCont" placeholder="Nome do escritório contábil" value="${esc(q.contador||'')}" style="max-width:360px"></div>
+      <div class="q"><h4>10. A equipe trabalha em turnos ou fora da sede?</h4>${tri('turnos',[['true','Sim','yes'],['false','Não','no'],['null','Não sei','unk']])}</div>
+    </div>
     <div id="qSuggest"></div>`;
-    const apply=()=>{const ns=score(c);$('#qAns').textContent=ns.answered;$('#qBar').style.width=ns.answered/5*100+'%';const el=$('#qScore');const from=+el.textContent;if(from!==ns.total){el.textContent=ns.total;el.animate([{transform:'scale(1.5)',color:'var(--gold-ink)'},{transform:'scale(1)'}],{duration:500})}
+    const apply=()=>{const ns=score(c);$('#qAns').textContent=ns.answered;$('#qCtx').textContent=ns.ctx;$('#qBar').style.width=ns.answered/5*100+'%';const el=$('#qScore');const from=+el.textContent;if(from!==ns.total){el.textContent=ns.total;el.animate([{transform:'scale(1.5)',color:'var(--gold-ink)'},{transform:'scale(1)'}],{duration:500})}
       const ok=q.funcStatus==='confirmado'&&q.func>=10&&q.func<=49&&q.decisor===true&&q.interesse==='sim';$('#qSuggest').innerHTML=ok&&o&&o.maxStage<4?`<div class="card" style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-color:var(--ok)"><div style="flex:1;min-width:200px"><b>Pronta para virar oportunidade qualificada</b><div class="hint">Equipe confirmada na faixa, decisor identificado e interesse declarado.</div></div><button class="btn" id="toQual">Mover para Qualificado</button></div>`:'';$('#toQual')&&($('#toQual').onclick=()=>{setStage(o,'qualificado');drawDrawer()})};
-    $$('.tri',b).forEach(t=>t.onclick=e=>{const btn=e.target.closest('button');if(!btn)return;const k=t.dataset.k;let v=btn.dataset.v;v=v==='null'?null:v==='true'?true:v==='false'?false:v;q[k]=v;if(k==='funcStatus'&&v==='desconhecido'){q.func=null;$('#qFunc').value=''}$$('button',t).forEach(x=>x.className='');btn.className='on '+(btn.dataset.v==='null'||v==='desconhecido'||v==='estimado'||v==='a definir'?'unk':[true,'sim','nenhum','confirmado','definido'].includes(v)?'yes':'no');apply();logQual(c,k)});
+    $$('.tri',b).forEach(t=>t.onclick=e=>{const btn=e.target.closest('button');if(!btn)return;const k=t.dataset.k;let v=btn.dataset.v;v=v==='null'?null:v==='true'?true:v==='false'?false:v;q[k]=v;if(k==='funcStatus'&&v==='desconhecido'){q.func=null;$('#qFunc').value=''}$$('button',t).forEach(x=>x.className='');btn.className='on '+(btn.dataset.c||'');logQual(c,k);if(k==='cct'){const y=$('#dBody').scrollTop;drawDrawer();$('#dBody').scrollTop=y;if(v===true)toast('Convenção coletiva exige benefício de saúde: alerta adicionado à ficha.');return}apply()});
+    $('#qCont').onchange=e=>{q.contador=e.target.value.trim()||null;apply();if(q.contador)toast(`${esc(q.contador)} registrado como contador da empresa.`)};
     $('#qFunc').oninput=e=>{const n=parseInt(e.target.value);q.func=isNaN(n)?null:n;if(q.func!=null&&q.funcStatus==='desconhecido'){q.funcStatus='estimado';drawDrawer();return}apply()};
     $('#qDecN').onchange=e=>{q.decisorNome=e.target.value||null;if(q.decisorNome&&q.decisor==null){q.decisor=true}drawDrawer()};
     apply();
   }
   if(DR.tab==='cont'){
     b.innerHTML=`${banner}<div class="card" style="margin-bottom:14px"><div class="card-head"><h3>Contatos</h3><button class="btn sec sm" id="addC">${ico('plus')}Adicionar contato</button></div>
-      ${c.contatos.map(x=>{const shared=COMPANIES.filter(y=>y!==c&&y.contatos.some(z=>z.valor===x.valor));const sup=c.supressao&&(c.supressao.escopo==='empresa'||c.supressao.canal===x.valor);return `<div class="contact"><div class="ci">${ico(x.tipo==='E-mail'?'mail':'phone')}</div><div class="w"><b class="mono">${esc(x.valor)}</b> ${x.status==='validado'?'<span class="chip ok">Validado</span>':x.status==='inválido'?'<span class="chip bad">Inválido</span>':'<span class="chip">Cadastral</span>'} ${sup?`<span class="chip bad">${ico('lock')}Não contatar</span>`:''}<div class="muted" style="font-size:12.5px">${x.tipo} · ${esc(x.origem)} · visto ${rel(x.quando)}</div>${shared.length?`<div class="alert-inline">${ico('alert')}<span>Mesmo telefone de ${shared.length} outras empresas (${shared.map(y=>esc(y.nome)).join(', ')}). Pode ser do escritório de contabilidade. As empresas não foram mescladas.</span></div>`:''}${x.tipo==='Telefone'?'<div class="hint" style="margin-top:3px">Formato de celular não confirma WhatsApp.</div>':''}</div></div>`}).join('')}
+      ${c.contatos.map(x=>{const shared=COMPANIES.filter(y=>y!==c&&y.contatos.some(z=>z.valor===x.valor));const sup=c.supressao&&(c.supressao.escopo==='empresa'||c.supressao.canal===x.valor);return `<div class="contact"><div class="ci">${ico(x.tipo==='E-mail'?'mail':'phone')}</div><div class="w"><b class="mono">${esc(x.valor)}</b> ${x.status==='validado'?'<span class="chip ok">Validado</span>':x.status==='inválido'?'<span class="chip bad">Inválido</span>':'<span class="chip">Cadastral</span>'} ${sup?`<span class="chip bad">${ico('lock')}Não contatar</span>`:''}<div class="muted" style="font-size:12.5px">${x.tipo} · ${esc(x.origem)} · visto ${rel(x.quando)}</div>${shared.length?`<div class="alert-inline">${ico('alert')}<span>Mesmo telefone de ${shared.length} outras empresas (${shared.map(y=>esc(y.nome)).join(', ')}). Pode ser do escritório de contabilidade. As empresas não foram mescladas.</span></div>${PARTNERS.some(p=>p.fone===x.valor)?`<div class="hint" style="margin-top:6px">${ico('check')} Escritório já cadastrado como parceiro.</div>`:`<button class="btn sec sm" style="margin-top:8px" data-partner="${esc(x.valor)}">${ico('plus')}Cadastrar o escritório como parceiro</button>`}`:''}${x.tipo==='Telefone'?'<div class="hint" style="margin-top:3px">Formato de celular não confirma WhatsApp.</div>':''}</div></div>`}).join('')}
     </div>
     <div class="card"><div class="card-head"><h3>Evidências</h3><span class="hint">De onde veio cada informação</span></div>
       <div class="tbl-wrap"><table><thead><tr><th>Campo</th><th>Valor</th><th>Origem</th><th>Quando</th><th>Status</th></tr></thead><tbody>
@@ -1000,6 +1014,7 @@ function drawDrawer(prevScore){
         <tr><td>Funcionários</td><td>${c.qual.func??'—'}</td><td>${c.qual.func!=null?'Conversa com a empresa':'—'}</td><td>${c.qual.func!=null?fDate(addDays(TODAY,-between(2,15))):'—'}</td><td>${c.qual.funcStatus==='confirmado'?'<span class="chip ok">Confirmado</span>':c.qual.funcStatus==='estimado'?'<span class="chip warn">Estimado</span>':'<span class="chip">Desconhecido</span>'}</td></tr>
       </tbody></table></div>
     </div>`;
+    $$('[data-partner]',b).forEach(btn=>btn.onclick=()=>partnerModal(btn.dataset.partner,c));
     $('#addC').onclick=()=>modal({title:'Adicionar contato',body:`<div class="row2"><div class="field"><label for="ct">Canal</label><select class="in" id="ct"><option>Telefone</option><option>E-mail</option></select></div><div class="field"><label for="cv">Valor</label><input class="in" id="cv" placeholder="(31) 90000-0000"></div></div><div class="field"><label for="co">Origem</label><select class="in" id="co"><option>Site oficial</option><option>Página comercial pública</option><option>Informado pela empresa</option></select></div><p class="hint" style="margin:0">Origem e data ficam registradas como evidência.</p>`,actions:[{l:'Cancelar',sec:true},{l:'Salvar contato',fn:m=>{const val=$('#cv',m).value.trim();if(!val){toast('Informe o telefone ou e-mail.');return false}c.contatos.push({id:c.id+'x'+Date.now(),tipo:$('#ct',m).value,valor:val,origem:$('#co',m).value,status:'cadastral',quando:new Date()});toast('Contato adicionado com origem registrada.');drawDrawer()}}]});
   }
   if(DR.tab==='tl'){
@@ -1073,6 +1088,17 @@ function lossModal(o){const c=coOf(o);let sel=null;
   modal({title:'Registrar perda',sub:esc(c.nome),body:`<div id="lErr"></div><div class="field"><span class="lbl">Motivo</span><div class="choices" id="lR">${LOSS.map(l=>`<button class="choice" data-l="${l}">${l}</button>`).join('')}</div></div><div class="field"><label for="lT">Comentário (opcional)</label><textarea class="in" id="lT" rows="2"></textarea></div>`,
     onMount:m=>$('#lR',m).onclick=e=>{const b=e.target.closest('[data-l]');if(!b)return;sel=b.dataset.l;$$('#lR .choice',m).forEach(x=>x.classList.toggle('on',x===b))},
     actions:[{l:'Cancelar',sec:true},{l:'Registrar perda',cls:'danger',fn:m=>{if(!sel){$('#lErr',m).innerHTML='<div class="err">Escolha o motivo da perda.</div>';return false}o.stage='perdido';o.loss=sel;o.next=null;AUDIT.unshift({when:new Date(),who:'andre',what:'Oportunidade perdida',det:`${c.nome} · ${sel}`});toast(`Perda registrada: ${sel}.`);refreshAfterStage()}}]});
+}
+function partnerModal(fone,c){
+  const ligadas=COMPANIES.filter(y=>y.contatos.some(z=>z.valor===fone));
+  modal({title:'Novo parceiro',sub:`Telefone ${esc(fone)} aparece em ${ligadas.length} empresas`,body:`
+    <div class="field"><label for="pN">Nome do escritório</label><input class="in" id="pN" placeholder="Ex.: Contabilidade Modelo Centro" value="${esc(c.qual.contador||'')}"></div>
+    <div class="row2"><div class="field"><label for="pT">Tipo</label><select class="in" id="pT"><option>Escritório contábil</option><option>Associação comercial</option><option>Outro parceiro</option></select></div><div class="field"><label for="pR">Responsável</label><select class="in" id="pR">${['ana','bruno','carla'].map(k=>`<option value="${k}">${TEAM[k].nome}</option>`).join('')}</select></div></div>
+    <div class="note" style="margin:0">${ico('info')}<span>O parceiro encaminha empresas ou divulga a adesão individual. Comissão só entra se for aprovada no futuro.</span></div>`,
+    actions:[{l:'Cancelar',sec:true},{l:'Cadastrar parceiro',fn:m=>{const nome=$('#pN',m).value.trim();if(!nome){toast('Informe o nome do escritório.');return false}
+      PARTNERS.push({nome,tipo:$('#pT',m).value,status:'Novo',empresas:ligadas.length,encaminhadas:0,resp:$('#pR',m).value,origem:'Telefone compartilhado',fone});
+      AUDIT.unshift({when:new Date(),who:'andre',what:'Parceiro cadastrado',det:`${nome} · ligado a ${ligadas.length} empresas pelo telefone ${fone}`});
+      toast(`${esc(nome)} cadastrado como parceiro, ligado a ${ligadas.length} empresas.`);drawDrawer()}}]});
 }
 function suppressModal(c){
   modal({title:'Não contatar',sub:`${esc(c.nome)} · bloqueio imediato`,body:`
@@ -1170,7 +1196,7 @@ VIEWS.importar=v=>{
 /* ---------- Administração ---------- */
 let ADM='score';
 VIEWS.ajustes=v=>{
-  const tabs=[['score','Pontuação'],['sup','Não contatar'],['cnae','Segmentos e CNAEs'],['users','Usuários'],['audit','Auditoria']];
+  const tabs=[['score','Pontuação'],['sup','Não contatar'],['parc','Parceiros'],['cnae','Segmentos e CNAEs'],['users','Usuários'],['audit','Auditoria']];
   v.innerHTML=`<div class="page-head"><div><h1>Administração</h1><p>Regras, bloqueios e trilha de auditoria. Só administradores acessam.</p></div></div><div class="subtabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${ADM===k?'on':''}">${l}</button>`).join('')}</div><div id="admBody"></div>`;
   $('.subtabs',v).onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;ADM=b.dataset.t;VIEWS.ajustes(v)};
   const b=$('#admBody');
@@ -1178,6 +1204,7 @@ VIEWS.ajustes=v=>{
     b.innerHTML=`<div class="adm"><div class="card"><div class="card-head"><div><h3>Pesos da pontuação</h3><span class="hint">Versão ${SCORE_VERSION} em uso · total normalizado para 0–100</span></div><span class="chip" id="wSum"></span></div>
       ${CRIT.map(([k,l])=>`<div class="w-row"><label for="w_${k}">${l}</label><input type="range" id="w_${k}" min="0" max="40" step="5" value="${W[k]}"><b id="wv_${k}">${W[k]}</b></div>`).join('')}
       <p class="note">${ico('info')}<span>Bloqueios valem independentemente da pontuação: não contatar, registro inválido ou empresa não ativa. Benefício já existente não bloqueia.</span></p>
+      <p class="note">${ico('info')}<span>Rotatividade, convenção coletiva, contador e turnos são registrados sem pontuar. Os pesos deles serão decididos com os dados do piloto.</span></p>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn" id="wSave">Salvar como versão ${SCORE_VERSION+1} e recalcular</button><button class="btn sec" id="wReset">Restaurar padrão</button></div></div>
       <div class="card"><div class="card-head"><div><h3>Prévia ao vivo</h3><span class="hint">Fila de trabalho: as 10 primeiras ainda não qualificadas. Mexa nos pesos e veja a ordem mudar.</span></div></div><ol class="rank" id="rank"></ol></div></div>`;
     const top=()=>COMPANIES.map(c=>({c,s:score(c),o:oppOf(c)})).filter(x=>!x.s.block&&x.o&&x.o.maxStage<4&&!['perdido','nutricao'].includes(x.o.stage)).sort((a,b)=>b.s.total-a.s.total||a.c.nome.localeCompare(b.c.nome)).slice(0,10);
@@ -1194,6 +1221,11 @@ VIEWS.ajustes=v=>{
     b.innerHTML=`<div class="card" style="padding:6px 18px 12px"><div class="tbl-wrap"><table><thead><tr><th>Empresa</th><th>Escopo</th><th>Motivo</th><th>Desde</th><th>Autor</th><th></th></tr></thead><tbody>${L.map(c=>`<tr><td><b>${esc(c.nome)}</b><div class="muted mono" style="font-size:12px">${fmtCnpj(c.cnpj)}</div></td><td><span class="chip bad">${ico('lock')}${c.supressao.escopo==='telefone'?'Telefone '+esc(c.supressao.canal):'Empresa'}</span></td><td style="max-width:320px">${esc(c.supressao.motivo)}</td><td>${fDate(c.supressao.data)}</td><td>${TEAM[c.supressao.autor].nome}</td><td><button class="btn sec sm" data-open="${c.id}">Abrir ficha</button></td></tr>`).join('')}</tbody></table></div></div>
     <p class="note">${ico('lock')}<span>Bloqueios sobrevivem a reimportações e alterações cadastrais. A reativação exige fundamento e fica na auditoria.</span></p>`;
     b.onclick=e=>{const x=e.target.closest('[data-open]');if(x)openCompany(x.dataset.open)}}
+  if(ADM==='parc'){
+    const comCont=COMPANIES.filter(c=>c.qual.contador).length;
+    b.innerHTML=`<div class="card" style="margin-bottom:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>Contadores como canal</b><div class="hint">O benchmark aponta o escritório contábil como possível porta de entrada nas PMEs. Hipótese a testar no piloto: comparar acesso ao decisor e prazo com a prospecção direta.</div></div><span class="chip info">${comCont} empresas com contador informado</span></div>
+    <div class="card" style="padding:6px 18px 12px"><div class="tbl-wrap"><table><thead><tr><th>Parceiro</th><th>Tipo</th><th>Origem</th><th>Status</th><th class="r">Empresas ligadas</th><th class="r">Encaminhadas</th><th>Responsável</th></tr></thead><tbody>${PARTNERS.map(p=>`<tr><td><b>${esc(p.nome)}</b>${p.fone?`<div class="muted mono" style="font-size:12px">${esc(p.fone)}</div>`:''}</td><td>${esc(p.tipo)}</td><td>${esc(p.origem)}</td><td><span class="chip ${p.status==='Novo'?'':'info'}">${esc(p.status)}</span></td><td class="r num">${p.empresas}</td><td class="r num">${p.encaminhadas}</td><td><span style="display:flex;align-items:center;gap:8px"><span class="av sm" style="background:${TEAM[p.resp].cor}">${TEAM[p.resp].ini}</span>${TEAM[p.resp].nome}</span></td></tr>`).join('')}</tbody></table></div></div>
+    <p class="note">${ico('info')}<span>Telefone compartilhado entre empresas sugere o escritório contábil. Abra uma das fichas com esse alerta para cadastrar o parceiro. Comissão só se for aprovada no futuro.</span></p>`}
   if(ADM==='cnae'){
     b.innerHTML=`<div class="block-banner warn">${ico('alert')}<div><b>Catálogo em validação.</b> Só 5611-2/03 e 8121-4/00 foram conferidos na classificação oficial (IBGE/CONCLA). Os demais precisam ser validados antes de lançar campanhas reais.</div></div>
     <div class="card" style="padding:6px 18px 12px"><div class="tbl-wrap"><table><thead><tr><th>Segmento</th><th>Prioridade</th><th>CNAE</th><th>Descrição</th><th>Status</th></tr></thead><tbody>${Object.entries(SEGS).map(([k,s])=>{const L=Object.entries(CNAES).filter(([,x])=>x.seg===k);return L.length?L.map(([code,x],i)=>`<tr><td>${i?'':`<span class="seg-tag"><i style="background:${s.cor}"></i>${s.nome}</span>`}</td><td>${i?'':s.ordem}</td><td class="mono">${code}</td><td>${esc(x.d)}</td><td>${x.st==='confirmado'?'<span class="chip ok">Conferido na fonte</span>':'<span class="chip warn">A validar</span>'}</td></tr>`).join(''):`<tr><td><span class="seg-tag"><i style="background:${s.cor}"></i>${s.nome}</span></td><td>${s.ordem}</td><td colspan="2" class="muted">Nenhum código cadastrado. Completar na fonte oficial.</td><td><span class="chip">Pendente</span></td></tr>`}).join('')}</tbody></table></div></div>`}

@@ -22,4 +22,10 @@ gerados para demonstração. Nenhuma integração é real e nada é enviado a lu
 No celular, a navegação fica na barra de baixo e o foco é o dia a dia: a fila de hoje e o
 registro rápido de contato. Atalho no computador: `Ctrl K` (ou `⌘ K`) abre a busca.
 
-Arquivo único (`index.html`), sem dependências além das fontes do Google Fonts.
+A qualificação traz também as perguntas de contexto vindas do benchmark de clientes
+(rotatividade, cobertura do benefício atual, convenção coletiva, contador e turnos), o
+alerta quando a convenção coletiva exige plano e o cadastro de escritórios contábeis como
+parceiros.
+
+Arquivo único, sem dependências além das fontes do Google Fonts. `index.html` é a página
+do site; `Prototipo.html` é a mesma página, para enviar como arquivo.
